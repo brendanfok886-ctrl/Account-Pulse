@@ -1,0 +1,584 @@
+{
+  "name": "AccountPulse MVP – Explainable Paid Media Growth Reviewer (Public Template)",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Upload Meta Ads CSV",
+        "formDescription": "Upload a Meta Ads CSV export and provide account context. All metrics and rules are computed deterministically in code — no AI is used to calculate numbers or decide alerts.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Meta Ads CSV Export",
+              "fieldType": "file",
+              "fieldName": "campaign_csv",
+              "multipleFiles": false,
+              "acceptFileTypes": ".csv",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Monthly Budget",
+              "fieldType": "number",
+              "fieldName": "monthly_budget",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Target CPA",
+              "fieldType": "number",
+              "fieldName": "target_cpa",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Analysis Date",
+              "fieldType": "date",
+              "fieldName": "analysis_date",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Currency",
+              "fieldType": "dropdown",
+              "fieldName": "currency",
+              "defaultValue": "HKD",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "HKD"
+                  },
+                  {
+                    "option": "USD"
+                  },
+                  {
+                    "option": "EUR"
+                  },
+                  {
+                    "option": "GBP"
+                  },
+                  {
+                    "option": "SGD"
+                  },
+                  {
+                    "option": "AUD"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "46377f54-92a5-467c-94d7-c76a7b9c5873",
+      "name": "Upload Meta Ads CSV",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "binaryPropertyName": "campaign_csv",
+        "options": {
+          "headerRow": true,
+          "includeEmptyCells": true
+        }
+      },
+      "id": "3d59f699-72ff-48cc-82d3-cf96c1452837",
+      "name": "Extract CSV to JSON",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        0
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Package the uploaded CSV rows + form config into one state item.\nconst form = $('Upload Meta Ads CSV').first().json || {};\nconst rows = $input.all().map(function (i) { return i.json; });\nconst config = {\n  monthly_budget: Number(form.monthly_budget),\n  target_cpa: Number(form.target_cpa),\n  analysis_date: form.analysis_date,\n  currency: form.currency || 'HKD',\n};\nreturn [{ json: { source: 'upload', config: config, raw_rows: rows } }];"
+      },
+      "id": "33da4a4b-274e-4d88-8f48-be4b4e0f0e44",
+      "name": "Prepare Upload Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const state = $input.first().json || {};\nconst config = state.config || {};\nconst rawRows = state.raw_rows || [];\nconst currency = config.currency || 'HKD';\n\nconst errors = [];\nconst warnings = [];\n\n// Canonical target columns and their recognised aliases (already key-normalized).\nconst ALIASES = {\n  date: ['date', 'day', 'reporting starts', 'reporting start', 'reporting ends'],\n  campaign_name: ['campaign name', 'campaign'],\n  spend: ['amount spent', 'spend', 'cost'],\n  impressions: ['impressions', 'impr'],\n  clicks: ['link clicks', 'clicks', 'clicks all'],\n  conversions: ['results', 'purchases', 'conversions', 'website purchases'],\n  revenue: ['purchase conversion value', 'purchases conversion value', 'conversion value', 'revenue'],\n  ad_name: ['ad name', 'ad'],\n};\n\nfunction normKey(k) {\n  return String(k).toLowerCase().replace(/\\([^)]*\\)/g, ' ').replace(/[^a-z0-9 ]/g, ' ').replace(/\\s+/g, ' ').trim();\n}\nfunction canonicalFor(k) {\n  const nk = normKey(k);\n  for (const canon in ALIASES) {\n    if (ALIASES[canon].indexOf(nk) !== -1) return canon;\n  }\n  return null;\n}\nfunction cleanNum(v) {\n  if (v === null || v === undefined) return null;\n  let s = String(v).replace(/[^0-9.\\-]/g, '').trim();\n  if (s === '' || s === '-' || s === '.') return null;\n  const n = parseFloat(s);\n  return isNaN(n) ? null : n;\n}\nfunction parseDate(v) {\n  if (v === null || v === undefined) return null;\n  const s = String(v).trim();\n  if (s === '') return null;\n  let m = s.match(/^(\\d{4})-(\\d{2})-(\\d{2})/); // YYYY-MM-DD\n  if (m) return m[1] + '-' + m[2] + '-' + m[3];\n  m = s.match(/^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})/); // MM/DD/YYYY\n  if (m) {\n    const mm = (m[1].length < 2 ? '0' : '') + m[1];\n    const dd = (m[2].length < 2 ? '0' : '') + m[2];\n    return m[3] + '-' + mm + '-' + dd;\n  }\n  const d = new Date(s);\n  if (!isNaN(d.getTime())) {\n    const y = d.getUTCFullYear();\n    const mm = ('0' + (d.getUTCMonth() + 1)).slice(-2);\n    const dd = ('0' + d.getUTCDate()).slice(-2);\n    return y + '-' + mm + '-' + dd;\n  }\n  return null;\n}\n\n// Discover which canonical columns exist across the header set.\nconst present = {};\nfor (const row of rawRows) {\n  for (const key in row) {\n    const canon = canonicalFor(key);\n    if (canon) present[canon] = true;\n  }\n}\nconst REQUIRED = ['date', 'campaign_name', 'spend', 'impressions', 'clicks', 'conversions'];\nconst missing = REQUIRED.filter(function (c) { return !present[c]; });\nif (missing.length) {\n  errors.push('Missing required column(s): ' + missing.join(', ') + '. Please include these headers (aliases are accepted).');\n}\nif (!present.revenue) warnings.push('No revenue/Purchase Conversion Value column found — ROAS will be omitted.');\nif (!present.ad_name) warnings.push('No Ad Name column found — creative deterioration will be evaluated at campaign level.');\n\nconst normalized = [];\nlet rowNum = 0;\nfor (const row of rawRows) {\n  rowNum++;\n  // Map raw row into canonical fields.\n  const mapped = {};\n  let allEmpty = true;\n  for (const key in row) {\n    const canon = canonicalFor(key);\n    if (!canon) continue;\n    const val = row[key];\n    if (val !== null && val !== undefined && String(val).trim() !== '') allEmpty = false;\n    mapped[canon] = val;\n  }\n  if (allEmpty) continue; // remove empty rows\n\n  const campaignRaw = mapped.campaign_name ? String(mapped.campaign_name).trim() : '';\n  // Drop summary / total rows.\n  if (campaignRaw === '' || /^(total|totals|grand total|summary)$/i.test(campaignRaw)) continue;\n\n  const dateVal = parseDate(mapped.date);\n  if (missing.length === 0 && !dateVal) {\n    errors.push('Row ' + rowNum + ': date value \"' + String(mapped.date) + '\" could not be parsed.');\n  }\n\n  const rec = {\n    date: dateVal,\n    campaign_name: campaignRaw,\n    spend: cleanNum(mapped.spend),\n    impressions: cleanNum(mapped.impressions),\n    clicks: cleanNum(mapped.clicks),\n    conversions: cleanNum(mapped.conversions),\n  };\n  if (present.revenue) rec.revenue = cleanNum(mapped.revenue);\n  if (present.ad_name && mapped.ad_name !== undefined) rec.ad_name = String(mapped.ad_name).trim();\n\n  // Validate required numerics (never invent missing values).\n  if (missing.length === 0) {\n    ['spend', 'impressions', 'clicks', 'conversions'].forEach(function (f) {\n      if (rec[f] === null) {\n        errors.push('Row ' + rowNum + ' (' + campaignRaw + '): could not parse numeric value for \"' + f + '\".');\n      }\n    });\n  }\n  normalized.push(rec);\n}\n\nif (normalized.length === 0 && errors.length === 0) {\n  errors.push('No usable data rows were found after cleaning.');\n}\n\nconst validDates = normalized.map(function (r) { return r.date; }).filter(Boolean).sort();\nconst campaigns = {};\nnormalized.forEach(function (r) { campaigns[r.campaign_name] = true; });\n\nconst input_summary = {\n  row_count: normalized.length,\n  date_start: validDates.length ? validDates[0] : '',\n  date_end: validDates.length ? validDates[validDates.length - 1] : '',\n  campaign_count: Object.keys(campaigns).length,\n  currency: currency,\n};\n\nconst validation_status = errors.length === 0 ? 'valid' : 'invalid';\n\nreturn [{ json: {\n  validation_status: validation_status,\n  errors: errors,\n  warnings: warnings,\n  normalized_rows: normalized,\n  input_summary: input_summary,\n  config: config,\n} }];"
+      },
+      "id": "3cbab646-56c6-4692-997e-4091a81b2b42",
+      "name": "Normalize and Validate CSV",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        96
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "a19aaf91-9370-44fa-b83a-ed65cd169b8b",
+      "name": "Run AccountPulse Demo",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        224,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Deterministic demo dataset using Meta Ads export headers (same schema as an upload).\n// 5 campaigns exercise every rule: overspend (account), CPA deterioration,\n// creative deterioration, controlled scaling, and insufficient data.\nconst analysisDate = '2026-08-18'; // analysis month = August 2026\nconst config = { monthly_budget: 100000, target_cpa: 250, analysis_date: analysisDate, currency: 'HKD' };\n\nfunction iso(y, m, d) {\n  const mm = (m < 10 ? '0' : '') + m;\n  const dd = (d < 10 ? '0' : '') + d;\n  return y + '-' + mm + '-' + dd;\n}\n\n// 30 calendar days of data: 2026-07-20 .. 2026-08-18\nconst dates = [];\nfor (let d = 20; d <= 31; d++) dates.push({ y: 2026, m: 7, d: d });\nfor (let d = 1; d <= 18; d++) dates.push({ y: 2026, m: 8, d: d });\n\nconst rows = [];\nfunction push(dt, campaign, ad, spend, impr, clicks, results, revenue) {\n  const r = {};\n  r['Day'] = iso(dt.y, dt.m, dt.d);\n  r['Campaign Name'] = campaign;\n  r['Ad Name'] = ad;\n  r['Amount Spent (HKD)'] = spend;\n  r['Impressions'] = impr;\n  r['Link Clicks'] = clicks;\n  r['Results'] = results;\n  r['Purchase Conversion Value'] = revenue;\n  rows.push(r);\n}\n\nfor (const dt of dates) {\n  const isAug = dt.m === 8;\n  const recentWeek = isAug && dt.d >= 12; // Aug 12-18\n\n  // 1) Aurora Skincare -> drives account overspending (very high spend).\n  push(dt, 'Aurora Skincare', 'Aurora - Prospecting', isAug ? 2800 : 1500, 20000, 200, 8, 8 * 300);\n\n  // 2) Nimbus Footwear -> CPA deterioration (recent CPA >= prev CPA * 1.2).\n  const nSpend = recentWeek ? 240 : 200;\n  const nRes = recentWeek ? 3 : 4;\n  push(dt, 'Nimbus Footwear', 'Nimbus - BAU', nSpend, 3000, 30, nRes, nRes * 180);\n\n  // 3) Solaris Home -> creative deterioration (CTR down >=15%, CPC up >=20%).\n  const sSpend = recentWeek ? 105 : 100;\n  const sClicks = recentWeek ? 10 : 12;\n  push(dt, 'Solaris Home', 'Solaris - Video A', sSpend, 1000, sClicks, 1, 1 * 150);\n\n  // 4) Verdant Coffee -> controlled scaling opportunity.\n  const vSpend = recentWeek ? 600 : 571.43;\n  push(dt, 'Verdant Coffee', 'Verdant - Retargeting', vSpend, 5000, 60, 3, 3 * 400);\n\n  // 5) Pixel Games -> insufficient data (only 3 days, tiny volume).\n  if (isAug && dt.d >= 16) {\n    push(dt, 'Pixel Games', 'Pixel - Launch', 10, 100, 2, 1, 0);\n  }\n}\n\nreturn [{ json: { source: 'demo', config: config, raw_rows: rows } }];"
+      },
+      "id": "a4445dec-ecf7-4f4d-b285-9bcf84718bff",
+      "name": "Generate Purpose-Built Demo Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid",
+              "leftValue": "={{ $json.validation_status }}",
+              "rightValue": "valid",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9ce01c95-6418-4f00-a3cf-b269ac6ee619",
+      "name": "Is Input Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        896,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const state = $input.first().json || {};\nconst rows = state.normalized_rows || [];\nconst config = state.config || {};\nconst currency = (state.input_summary && state.input_summary.currency) || config.currency || 'HKD';\nconst budget = Number(config.monthly_budget) || 0;\n\n// Division-by-zero safe helper: returns null when denominator is 0/invalid.\nfunction sd(a, b) { return (b && b !== 0) ? a / b : null; }\nfunction toUTC(ds) { const p = String(ds).split('-'); return Date.UTC(+p[0], +p[1] - 1, +p[2]); }\n\nconst analysisDate = config.analysis_date;\nconst ap = String(analysisDate).split('-');\nconst aY = +ap[0], aM = +ap[1], aDay = +ap[2];\nconst aMs = toUTC(analysisDate);\nconst dayMs = 86400000;\nconst recentStart = aMs - 6 * dayMs; // recent 7 days: analysis_date-6 .. analysis_date\nconst prevEnd = aMs - 7 * dayMs;      // previous 7 days: analysis_date-13 .. analysis_date-7\nconst prevStart = aMs - 13 * dayMs;\nconst totalDaysInMonth = new Date(Date.UTC(aY, aM, 0)).getUTCDate();\n\nfunction emptyAgg() { return { spend: 0, impressions: 0, clicks: 0, conversions: 0, revenue: 0, has_revenue: false, days: 0 }; }\nfunction addRow(a, r) {\n  a.spend += (+r.spend || 0);\n  a.impressions += (+r.impressions || 0);\n  a.clicks += (+r.clicks || 0);\n  a.conversions += (+r.conversions || 0);\n  if (r.revenue !== undefined && r.revenue !== null && r.revenue !== '') { a.revenue += (+r.revenue || 0); a.has_revenue = true; }\n  a.days += 1;\n}\nfunction derive(a) {\n  return {\n    spend: a.spend, impressions: a.impressions, clicks: a.clicks, conversions: a.conversions,\n    revenue: a.has_revenue ? a.revenue : null,\n    ctr: sd(a.clicks, a.impressions),   // clicks / impressions\n    cpc: sd(a.spend, a.clicks),          // spend / clicks\n    cvr: sd(a.conversions, a.clicks),    // conversions / clicks\n    cpa: sd(a.spend, a.conversions),     // spend / conversions\n    roas: a.has_revenue ? sd(a.revenue, a.spend) : null, // revenue / spend (only when revenue exists)\n  };\n}\n\nconst acct = emptyAgg();\nconst acctRecent = emptyAgg();\nconst acctPrev = emptyAgg();\nconst campMap = {};\nlet mtdSpend = 0;\nconst mtdDates = {};\nlet minMonthDay = 99;\n\nfor (const r of rows) {\n  if (!r.date) continue;\n  const ms = toUTC(r.date);\n  addRow(acct, r);\n  const inRecent = ms >= recentStart && ms <= aMs;\n  const inPrev = ms >= prevStart && ms <= prevEnd;\n  if (inRecent) addRow(acctRecent, r);\n  if (inPrev) addRow(acctPrev, r);\n\n  const pp = String(r.date).split('-');\n  const ry = +pp[0], rm = +pp[1], rd = +pp[2];\n  if (ry === aY && rm === aM && rd <= aDay) { mtdSpend += (+r.spend || 0); mtdDates[r.date] = true; if (rd < minMonthDay) minMonthDay = rd; }\n\n  const cname = r.campaign_name;\n  if (!campMap[cname]) campMap[cname] = { name: cname, tot: emptyAgg(), rec: emptyAgg(), prev: emptyAgg(), groups: {}, hasAd: false };\n  const c = campMap[cname];\n  addRow(c.tot, r);\n  if (inRecent) addRow(c.rec, r);\n  if (inPrev) addRow(c.prev, r);\n\n  const hasAd = r.ad_name !== undefined && r.ad_name !== null && String(r.ad_name).trim() !== '';\n  if (hasAd) c.hasAd = true;\n  const gkey = hasAd ? String(r.ad_name).trim() : cname;\n  if (!c.groups[gkey]) c.groups[gkey] = { key: gkey, rec: emptyAgg(), prev: emptyAgg() };\n  if (inRecent) addRow(c.groups[gkey].rec, r);\n  if (inPrev) addRow(c.groups[gkey].prev, r);\n}\n\n// ---- Month-end spend forecast (transparent linear pacing) ----\nconst distinctMonthDates = Object.keys(mtdDates).length;\nconst elapsedDays = aDay; // elapsed calendar days = day-of-month of analysis_date\nconst enough7 = distinctMonthDates >= 7;\nconst startsNearMonthStart = minMonthDay <= 3;\nconst missingRatio = elapsedDays > 0 ? (1 - distinctMonthDates / elapsedDays) : 1;\nconst notTooMissing = missingRatio <= 0.20;\nlet forecast_status, projected, forecast_note;\nif (enough7 && startsNearMonthStart && notTooMissing) {\n  forecast_status = 'ok';\n  // Projected Month-End Spend = MTD Spend / Elapsed Calendar Days * Total Calendar Days in Month\n  const perDay = sd(mtdSpend, elapsedDays);\n  projected = perDay === null ? null : perDay * totalDaysInMonth;\n  forecast_note = 'Linear pacing estimate (MTD spend / elapsed days x days in month). NOT a machine-learning prediction.';\n} else {\n  forecast_status = 'insufficient';\n  projected = null;\n  forecast_note = 'Insufficient Data for Reliable Forecast';\n}\n\nconst overall = derive(acct);\noverall.mtd_spend = mtdSpend;\noverall.elapsed_days = elapsedDays;\noverall.total_days_in_month = totalDaysInMonth;\noverall.distinct_month_dates = distinctMonthDates;\noverall.projected_month_end_spend = projected;\noverall.budget = budget;\noverall.budget_ratio = (budget > 0 && projected != null) ? projected / budget : null;\noverall.forecast_status = forecast_status;\noverall.forecast_note = forecast_note;\noverall.forecast_method = 'Projected Month-End Spend = Month-to-Date Spend / Elapsed Calendar Days x Total Calendar Days in Month (linear pacing estimate, not ML).';\noverall.recent7 = derive(acctRecent);\noverall.previous7 = derive(acctPrev);\n\nconst campaign_metrics = Object.keys(campMap).map(function (k) {\n  const c = campMap[k];\n  const groups = Object.keys(c.groups).map(function (gk) {\n    const g = c.groups[gk];\n    const gr = derive(g.rec);\n    const gp = derive(g.prev);\n    return {\n      group_key: g.key,\n      level: c.hasAd ? 'ad' : 'campaign',\n      recent: { impressions: gr.impressions, clicks: gr.clicks, spend: gr.spend, ctr: gr.ctr, cpc: gr.cpc },\n      previous: { impressions: gp.impressions, clicks: gp.clicks, spend: gp.spend, ctr: gp.ctr, cpc: gp.cpc },\n    };\n  });\n  return {\n    campaign_name: c.name,\n    has_ad_names: c.hasAd,\n    totals: derive(c.tot),\n    recent7: derive(c.rec),\n    previous7: derive(c.prev),\n    groups: groups,\n  };\n});\n\nstate.currency = currency;\nstate.overall_metrics = overall;\nstate.campaign_metrics = campaign_metrics;\nstate.insights = [];\nreturn [{ json: state }];"
+      },
+      "id": "a6b3d825-d614-4d2d-b4de-0c50889ab61a",
+      "name": "Calculate Campaign Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $input.first().json;\nconst om = s.overall_metrics || {};\nconst budget = Number(s.config.monthly_budget) || 0;\nconst proj = om.projected_month_end_spend;\nconst ratio = om.budget_ratio;\n\n// Thresholds: >110% overspend, <90% underspend, else on track.\nlet status, priority, title, what, why, action, confidence, sufficiency;\nwhy = 'Budget pacing determines whether the account will over- or under-spend the monthly budget if current daily spend continues.';\nif (om.forecast_status === 'insufficient' || proj == null || budget <= 0) {\n  status = 'insufficient_data'; priority = 'none'; title = 'Budget Pacing: Insufficient Data';\n  what = 'A reliable month-end spend forecast could not be produced, so budget pacing cannot be assessed.';\n  action = 'Ensure the export covers the full month-to-date starting near the 1st with no large date gaps.';\n  confidence = 'low'; sufficiency = 'Forecast requirements not met.';\n} else if (ratio > 1.10) {\n  status = 'triggered'; priority = 'high'; title = 'Overspending Risk';\n  what = 'Projected month-end spend is ' + (ratio * 100).toFixed(1) + '% of the monthly budget (above the 110% threshold).';\n  action = 'Review daily budgets/bids on the highest-spend campaigns to bring pacing back toward budget.';\n  confidence = 'high'; sufficiency = 'Forecast produced from sufficient month-to-date data.';\n} else if (ratio < 0.90) {\n  status = 'triggered'; priority = 'medium'; title = 'Underspending Risk';\n  what = 'Projected month-end spend is ' + (ratio * 100).toFixed(1) + '% of the monthly budget (below the 90% threshold).';\n  action = 'Consider reallocating budget to efficient campaigns to fully use the planned budget.';\n  confidence = 'high'; sufficiency = 'Forecast produced from sufficient month-to-date data.';\n} else {\n  status = 'on_track'; priority = 'low'; title = 'Budget On Track';\n  what = 'Projected month-end spend is ' + (ratio * 100).toFixed(1) + '% of the monthly budget (within the 90-110% band).';\n  action = 'No budget action required; continue monitoring.';\n  confidence = 'high'; sufficiency = 'Forecast produced from sufficient month-to-date data.';\n}\n\ns.insights.push({\n  rule_id: 'rule_1_budget_pacing',\n  title: title,\n  status: status,\n  priority: priority,\n  what_happened: what,\n  evidence: {\n    monthly_budget: budget,\n    month_to_date_spend: om.mtd_spend,\n    elapsed_calendar_days: om.elapsed_days,\n    total_days_in_month: om.total_days_in_month,\n    projected_month_end_spend: proj,\n    budget_ratio: ratio,\n    overspend_threshold: 1.10,\n    underspend_threshold: 0.90,\n  },\n  why_it_matters: why,\n  recommended_action: action,\n  confidence: confidence,\n  data_sufficiency: sufficiency,\n});\nreturn [{ json: s }];"
+      },
+      "id": "958623cd-7e7d-413f-bf93-a9dd443e476e",
+      "name": "Rule 1 – Budget Pacing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $input.first().json;\nconst camps = s.campaign_metrics || [];\nconst MIN_CONV = 15;      // each 7-day window needs >=15 conversions\nconst TRIGGER = 1.20;     // recent CPA >= previous CPA * 1.20\n\nconst triggered = [];\nconst details = [];\nlet anyEvaluated = false;\ncamps.forEach(function (c) {\n  const rc = c.recent7.conversions;\n  const pc = c.previous7.conversions;\n  const rCpa = c.recent7.cpa;\n  const pCpa = c.previous7.cpa;\n  const evaluable = rc >= MIN_CONV && pc >= MIN_CONV && rCpa != null && pCpa != null;\n  const row = { campaign: c.campaign_name, recent_conversions: rc, previous_conversions: pc, recent_cpa: rCpa, previous_cpa: pCpa, ratio: (pCpa ? rCpa / pCpa : null), evaluable: evaluable };\n  if (evaluable) {\n    anyEvaluated = true;\n    if (rCpa >= pCpa * TRIGGER) { row.result = 'deteriorated'; triggered.push(row); }\n    else row.result = 'stable';\n  } else {\n    row.result = 'insufficient_data';\n  }\n  details.push(row);\n});\n\nlet status, priority, title, what, action, confidence, sufficiency;\nif (triggered.length) {\n  status = 'triggered'; priority = 'high'; title = 'CPA Deterioration Detected';\n  const names = triggered.map(function (t) { return t.campaign; }).join(', ');\n  what = 'CPA rose at least 20% week-over-week for: ' + names + '.';\n  action = 'Investigate audience saturation, bid changes and landing-page/offer factors for the affected campaigns.';\n  confidence = 'high'; sufficiency = 'Both 7-day windows met the 15-conversion minimum for the flagged campaigns.';\n} else if (anyEvaluated) {\n  status = 'stable'; priority = 'low'; title = 'CPA Stable';\n  what = 'No campaign with sufficient volume showed a 20%+ week-over-week CPA increase.';\n  action = 'No action required; continue monitoring CPA trends.';\n  confidence = 'high'; sufficiency = 'At least one campaign met the 15-conversion minimum in both windows.';\n} else {\n  status = 'insufficient_data'; priority = 'none'; title = 'CPA Deterioration: Insufficient Data';\n  what = 'No campaign had at least 15 conversions in both the recent and previous 7-day windows.';\n  action = 'Collect more conversion volume before assessing CPA trend reliability.';\n  confidence = 'low'; sufficiency = 'Conversion volume below the 15-per-window minimum.';\n}\n\ns.insights.push({\n  rule_id: 'rule_2_cpa_deterioration',\n  title: title, status: status, priority: priority, what_happened: what,\n  evidence: { min_conversions_per_window: MIN_CONV, trigger_multiplier: TRIGGER, campaigns: details },\n  why_it_matters: 'A sharp CPA increase signals eroding efficiency and rising cost to acquire each customer.',\n  recommended_action: action, confidence: confidence, data_sufficiency: sufficiency,\n});\nreturn [{ json: s }];"
+      },
+      "id": "4c853eea-06f6-4e20-ad6c-e11c84fcd426",
+      "name": "Rule 2 – CPA Deterioration",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $input.first().json;\nconst camps = s.campaign_metrics || [];\nconst MIN_IMPR = 5000;   // per 7-day window\nconst MIN_CLICKS = 50;   // per 7-day window\nconst CTR_DROP = 0.15;   // CTR down >= 15%\nconst CPC_RISE = 0.20;   // CPC up >= 20%\n\nconst triggered = [];\nconst details = [];\nlet anyEvaluated = false;\ncamps.forEach(function (c) {\n  c.groups.forEach(function (g) {\n    const r = g.recent, p = g.previous;\n    const evaluable = r.impressions >= MIN_IMPR && r.clicks >= MIN_CLICKS && p.impressions >= MIN_IMPR && p.clicks >= MIN_CLICKS && r.ctr != null && p.ctr != null && r.cpc != null && p.cpc != null;\n    const row = { campaign: c.campaign_name, group: g.group_key, level: g.level, recent_ctr: r.ctr, previous_ctr: p.ctr, recent_cpc: r.cpc, previous_cpc: p.cpc, recent_impressions: r.impressions, recent_clicks: r.clicks, evaluable: evaluable };\n    if (evaluable) {\n      anyEvaluated = true;\n      const ctrDown = r.ctr <= p.ctr * (1 - CTR_DROP);\n      const cpcUp = r.cpc >= p.cpc * (1 + CPC_RISE);\n      row.ctr_change = (r.ctr - p.ctr) / p.ctr;\n      row.cpc_change = (r.cpc - p.cpc) / p.cpc;\n      if (ctrDown && cpcUp) { row.result = 'deteriorated'; triggered.push(row); }\n      else row.result = 'stable';\n    } else {\n      row.result = 'insufficient_data';\n    }\n    details.push(row);\n  });\n});\n\nlet status, priority, title, what, action, confidence, sufficiency;\nif (triggered.length) {\n  status = 'triggered'; priority = 'high'; title = 'Creative Performance Deterioration';\n  const names = triggered.map(function (t) { return t.group; }).join(', ');\n  what = 'CTR fell at least 15% AND CPC rose at least 20% week-over-week for: ' + names + '.';\n  action = 'Refresh or rotate the affected creatives and review frequency; verify the cause before assuming fatigue.';\n  confidence = 'medium'; sufficiency = 'Both windows met the 5,000 impressions / 50 clicks minimums for the flagged items.';\n} else if (anyEvaluated) {\n  status = 'stable'; priority = 'low'; title = 'Creative Performance Stable';\n  what = 'No creative/campaign with sufficient volume showed the combined CTR drop and CPC rise pattern.';\n  action = 'No action required; continue monitoring creative efficiency.';\n  confidence = 'medium'; sufficiency = 'At least one item met the impression/click minimums in both windows.';\n} else {\n  status = 'insufficient_data'; priority = 'none'; title = 'Creative Deterioration: Insufficient Data';\n  what = 'No creative/campaign met the 5,000 impressions and 50 clicks minimums in both 7-day windows.';\n  action = 'Allow more delivery before assessing creative deterioration.';\n  confidence = 'low'; sufficiency = 'Impression/click volume below minimums.';\n}\n\ns.insights.push({\n  rule_id: 'rule_3_creative_deterioration',\n  title: title, status: status, priority: priority, what_happened: what,\n  evidence: { min_impressions_per_window: MIN_IMPR, min_clicks_per_window: MIN_CLICKS, ctr_drop_threshold: CTR_DROP, cpc_rise_threshold: CPC_RISE, items: details },\n  why_it_matters: 'A simultaneous CTR decline and CPC increase indicates weakening creative resonance and rising delivery cost. This is a performance signal, not a confirmed cause of creative fatigue.',\n  recommended_action: action, confidence: confidence, data_sufficiency: sufficiency,\n});\nreturn [{ json: s }];"
+      },
+      "id": "d2773d28-a0c6-4331-a77d-535dea549d33",
+      "name": "Rule 3 – Creative Deterioration",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $input.first().json;\nconst camps = s.campaign_metrics || [];\nconst om = s.overall_metrics || {};\nconst target = Number(s.config.target_cpa) || 0;\nconst MIN_CONV = 15;              // recent 7-day conversions\nconst BELOW_TARGET = 0.85;        // recent CPA <= 85% of target (>=15% below)\nconst MAX_WOW_DETER = 0.10;       // week-over-week CPA deterioration <= 10%\nconst BUDGET_GATE = 1.20;         // account forecast must NOT be clearly above 110% (treated as <=120%)\n\n// Account-level guardrail: scaling is withheld if the account is clearly pacing over budget.\nconst ratio = om.budget_ratio;\nconst budgetOk = om.forecast_status === 'insufficient' ? false : (ratio == null || ratio <= BUDGET_GATE);\n\nconst qualifying = [];\nconst details = [];\ncamps.forEach(function (c) {\n  const rc = c.recent7.conversions;\n  const rCpa = c.recent7.cpa;\n  const pCpa = c.previous7.cpa;\n  const pc = c.previous7.conversions;\n  const wow = (pCpa && rCpa != null) ? (rCpa - pCpa) / pCpa : null;\n  const enoughConv = rc >= MIN_CONV;\n  const efficient = target > 0 && rCpa != null && rCpa <= target * BELOW_TARGET;\n  const stableWow = pc >= MIN_CONV && wow != null && wow <= MAX_WOW_DETER;\n  const qualifies = enoughConv && efficient && stableWow && budgetOk;\n  const row = { campaign: c.campaign_name, recent_conversions: rc, recent_cpa: rCpa, target_cpa: target, cpa_vs_target: (target ? rCpa / target : null), wow_cpa_change: wow, budget_ratio: ratio, budget_guardrail_ok: budgetOk, qualifies: qualifies };\n  if (qualifies) qualifying.push(row);\n  details.push(row);\n});\n\nlet status, priority, title, what, action, confidence, sufficiency;\nif (qualifying.length) {\n  status = 'triggered'; priority = 'medium'; title = 'Controlled Scaling Opportunity';\n  const names = qualifying.map(function (t) { return t.campaign; }).join(', ');\n  what = 'These campaigns show efficient, stable performance with room to scale within budget: ' + names + '.';\n  action = 'Consider a measured budget increase (e.g. 10-20%) with close monitoring. Do NOT auto-change budgets; a human should approve.';\n  confidence = 'high'; sufficiency = 'Recent conversions, CPA vs target, week-over-week stability and account budget guardrail all satisfied.';\n} else if (!budgetOk) {\n  status = 'on_track'; priority = 'low'; title = 'Scaling Withheld — Budget Guardrail';\n  what = 'One or more campaigns may be efficient, but the account is pacing over budget, so scaling is withheld by the guardrail.';\n  action = 'Resolve account overspend before scaling any campaign.';\n  confidence = 'high'; sufficiency = 'Account budget guardrail not satisfied.';\n} else {\n  status = 'insufficient_data'; priority = 'none'; title = 'No Controlled Scaling Opportunity';\n  what = 'No campaign met all scaling conditions (>=15 recent conversions, CPA >=15% below target, WoW CPA deterioration <=10%).';\n  action = 'No scaling recommended at this time.';\n  confidence = 'medium'; sufficiency = 'Scaling conditions not met by any campaign.';\n}\n\ns.insights.push({\n  rule_id: 'rule_4_scaling_opportunity',\n  title: title, status: status, priority: priority, what_happened: what,\n  evidence: { min_recent_conversions: MIN_CONV, cpa_below_target_ratio: BELOW_TARGET, max_wow_cpa_deterioration: MAX_WOW_DETER, account_budget_gate: BUDGET_GATE, account_budget_ratio: ratio, budget_guardrail_ok: budgetOk, campaigns: details },\n  why_it_matters: 'Scaling efficient, stable campaigns can grow results without harming efficiency — but only when the account is not already overspending.',\n  recommended_action: action, confidence: confidence, data_sufficiency: sufficiency,\n});\nreturn [{ json: s }];"
+      },
+      "id": "2a8e90fc-9d49-4615-8056-852c9288ab92",
+      "name": "Rule 4 – Scaling Opportunity",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2016,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $input.first().json;\nconst om = s.overall_metrics || {};\nconst camps = s.campaign_metrics || [];\nconst insights = s.insights || [];\nconst cur = s.currency || (s.input_summary && s.input_summary.currency) || 'HKD';\nconst nowIso = new Date().toISOString();\n\nfunction money(n) {\n  if (n == null || !Number.isFinite(Number(n))) return 'N/A';\n  return cur + ' ' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });\n}\nfunction num(n) {\n  if (n == null || !Number.isFinite(Number(n))) return 'N/A';\n  return Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });\n}\nfunction pct(n, digits) {\n  if (n == null || !Number.isFinite(Number(n))) return 'N/A';\n  return (Number(n) * 100).toFixed(digits == null ? 1 : digits) + '%';\n}\nfunction esc(t) {\n  return String(t == null ? '' : t)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#039;');\n}\nfunction priorityRank(p) {\n  return { high: 0, medium: 1, low: 2, none: 3 }[p] == null ? 4 : { high: 0, medium: 1, low: 2, none: 3 }[p];\n}\nfunction metricChip(label, value) {\n  return '<div class=\"metric-chip\"><span>' + esc(label) + '</span><strong>' + esc(value) + '</strong></div>';\n}\nfunction listHtml(items) {\n  return '<ul class=\"clean-list\">' + items.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>';\n}\nfunction evidenceHtml(i) {\n  const e = i.evidence || {};\n  const chips = [];\n\n  if (i.rule_id === 'rule_1_budget_pacing') {\n    chips.push(metricChip('Monthly budget', money(e.monthly_budget)));\n    chips.push(metricChip('Month-to-date spend', money(e.month_to_date_spend)));\n    chips.push(metricChip('Projected month-end', money(e.projected_month_end_spend)));\n    chips.push(metricChip('Projected budget use', pct(e.budget_ratio)));\n  }\n\n  if (i.rule_id === 'rule_2_cpa_deterioration') {\n    (e.campaigns || []).filter(function (x) { return x.result === 'deteriorated'; }).forEach(function (x) {\n      chips.push(metricChip(x.campaign + ' · Previous CPA', money(x.previous_cpa)));\n      chips.push(metricChip(x.campaign + ' · Recent CPA', money(x.recent_cpa)));\n      chips.push(metricChip(x.campaign + ' · CPA change', x.ratio == null ? 'N/A' : pct(x.ratio - 1)));\n      chips.push(metricChip(x.campaign + ' · Conversions', num(x.previous_conversions) + ' → ' + num(x.recent_conversions)));\n    });\n  }\n\n  if (i.rule_id === 'rule_3_creative_deterioration') {\n    (e.items || []).filter(function (x) { return x.result === 'deteriorated'; }).forEach(function (x) {\n      const name = x.group || x.campaign || 'Creative';\n      chips.push(metricChip(name + ' · CTR', pct(x.previous_ctr) + ' → ' + pct(x.recent_ctr)));\n      chips.push(metricChip(name + ' · CTR change', pct(x.ctr_change)));\n      chips.push(metricChip(name + ' · CPC', money(x.previous_cpc) + ' → ' + money(x.recent_cpc)));\n      chips.push(metricChip(name + ' · CPC change', pct(x.cpc_change)));\n      chips.push(metricChip(name + ' · Recent volume', num(x.recent_impressions) + ' impressions · ' + num(x.recent_clicks) + ' clicks'));\n    });\n  }\n\n  if (i.rule_id === 'rule_4_scaling_opportunity') {\n    (e.campaigns || []).filter(function (x) { return x.qualifies === true; }).forEach(function (x) {\n      chips.push(metricChip(x.campaign + ' · Recent CPA', money(x.recent_cpa)));\n      chips.push(metricChip(x.campaign + ' · Target CPA', money(x.target_cpa)));\n      chips.push(metricChip(x.campaign + ' · Below target', x.cpa_vs_target == null ? 'N/A' : pct(1 - x.cpa_vs_target)));\n      chips.push(metricChip(x.campaign + ' · Recent conversions', num(x.recent_conversions)));\n      chips.push(metricChip(x.campaign + ' · WoW CPA change', pct(x.wow_cpa_change)));\n    });\n    if (e.account_budget_ratio != null) chips.push(metricChip('Account budget ratio', pct(e.account_budget_ratio)));\n  }\n\n  if (!chips.length) {\n    return '<p class=\"muted\">The verified rule output did not contain displayable evidence metrics for this state.</p>';\n  }\n  return '<div class=\"metric-grid\">' + chips.join('') + '</div>';\n}\n\nfunction actionPlan(i) {\n  const e = i.evidence || {};\n  const plan = {\n    actions: [],\n    monitor: [],\n    timing: 'Review after the next complete reporting window.',\n    guardrail: 'Use the figures as decision support. Keep campaign changes human-approved.',\n  };\n\n  if (i.rule_id === 'rule_1_budget_pacing') {\n    if (i.title === 'Underspending Risk') {\n      plan.actions = [\n        'Identify campaigns that are meeting efficiency targets before reallocating any unused budget.',\n        'Prioritise proven campaigns rather than increasing every campaign equally.',\n        'Increase allocation gradually and avoid changing budget, audience and creative at the same time.',\n      ];\n      plan.monitor = ['Projected month-end spend', 'Budget utilisation', 'CPA', 'Conversion volume'];\n      plan.timing = 'Recheck pacing within 48–72 hours, or after enough new conversions are recorded.';\n      plan.guardrail = 'Underspending is a pacing signal, not evidence that every remaining dollar should be spent.';\n    } else if (i.title === 'Overspending Risk') {\n      plan.actions = [\n        'Rank campaigns by spend and efficiency to locate the largest sources of overspend.',\n        'Reduce or reallocate budget gradually from the least efficient campaigns.',\n        'Avoid simultaneous bid, budget and creative changes so the impact remains measurable.',\n      ];\n      plan.monitor = ['Daily spend', 'Projected month-end spend', 'CPA', 'Conversions'];\n      plan.timing = 'Recheck pacing within 24–48 hours after any approved adjustment.';\n      plan.guardrail = 'Do not pause campaigns solely because the account is over pace; assess efficiency and business priority first.';\n    } else {\n      plan.actions = ['Maintain the current pacing approach and continue monitoring campaign-level efficiency.'];\n      plan.monitor = ['Budget utilisation', 'CPA', 'Conversion volume'];\n    }\n  }\n\n  if (i.rule_id === 'rule_2_cpa_deterioration') {\n    plan.actions = [\n      'Review audience, placement, bid, landing-page and offer changes made between the two comparison windows.',\n      'Treat those factors as diagnostic hypotheses, not confirmed causes.',\n      'Isolate one material variable at a time before making a corrective change.',\n    ];\n    plan.monitor = ['CPA', 'Conversions', 'Spend', 'CTR', 'CPC'];\n    plan.timing = 'Reassess after 48–72 hours or after the campaign records a meaningful new conversion sample.';\n    plan.guardrail = 'The alert is fired only when both windows meet the minimum conversion requirement; it still does not prove causality.';\n  }\n\n  if (i.rule_id === 'rule_3_creative_deterioration') {\n    plan.actions = [\n      'Prepare or rotate alternative creatives for the affected ad or creative group.',\n      'Test one controlled difference—such as hook, visual or format—while keeping other variables stable.',\n      'Review frequency and audience overlap if those fields are available in Ads Manager.',\n    ];\n    plan.monitor = ['CTR', 'CPC', 'Impressions', 'Clicks', 'CPA'];\n    plan.timing = 'Reassess after 48–72 hours or once the replacement reaches sufficient click and impression volume.';\n    plan.guardrail = 'Simultaneous CTR decline and CPC increase is a performance signal; it does not confirm creative fatigue.';\n  }\n\n  if (i.rule_id === 'rule_4_scaling_opportunity') {\n    if (i.status === 'triggered') {\n      plan.actions = [\n        'Apply a human-approved budget increase of 10–20% to qualifying campaigns.',\n        'Change one variable at a time and keep a record of the adjustment.',\n        'Hold further increases if CPA rises above target or performance becomes unstable.',\n      ];\n      plan.monitor = ['CPA versus target', 'Recent conversions', 'WoW CPA change', 'Account budget ratio'];\n      plan.timing = 'Review 48–72 hours after the approved increase, or after sufficient new conversions.';\n      plan.guardrail = 'Scaling remains conditional on account pacing and should never be applied automatically.';\n    } else {\n      plan.actions = ['Keep scaling on hold until the budget guardrail and efficiency conditions are satisfied.'];\n      plan.monitor = ['Account budget ratio', 'CPA versus target', 'Conversion volume'];\n    }\n  }\n\n  if (!plan.actions.length) plan.actions = [i.recommended_action || 'Continue monitoring the verified metrics.'];\n  if (!plan.monitor.length) plan.monitor = ['Primary rule metrics', 'Conversion volume'];\n  return plan;\n}\n\nfunction planCard(i) {\n  const p = actionPlan(i);\n  const scope = i.rule_id === 'rule_2_cpa_deterioration'\n    ? ((i.evidence && i.evidence.campaigns) || []).filter(function (x) { return x.result === 'deteriorated'; }).map(function (x) { return x.campaign; }).join(', ')\n    : i.rule_id === 'rule_3_creative_deterioration'\n      ? ((i.evidence && i.evidence.items) || []).filter(function (x) { return x.result === 'deteriorated'; }).map(function (x) { return x.group || x.campaign; }).join(', ')\n      : i.rule_id === 'rule_4_scaling_opportunity'\n        ? ((i.evidence && i.evidence.campaigns) || []).filter(function (x) { return x.qualifies === true; }).map(function (x) { return x.campaign; }).join(', ')\n        : 'Account level';\n\n  return '<article class=\"action-card\">' +\n    '<div class=\"action-head\"><div><span class=\"eyebrow\">' + esc((i.priority || 'none') + ' priority') + '</span><h3>' + esc(i.title) + '</h3></div><span class=\"status ' + esc(i.status) + '\">' + esc(i.status.replace(/_/g, ' ')) + '</span></div>' +\n    '<div class=\"action-meta\"><strong>Scope:</strong> ' + esc(scope || 'No qualifying entity') + '</div>' +\n    '<div class=\"action-columns\"><div><h4>Recommended actions</h4>' + listHtml(p.actions) + '</div>' +\n    '<div><h4>Monitor</h4>' + listHtml(p.monitor) + '<p class=\"timing\"><strong>Review timing:</strong> ' + esc(p.timing) + '</p></div></div>' +\n    '<div class=\"guardrail\"><strong>Decision guardrail:</strong> ' + esc(p.guardrail) + '</div></article>';\n}\n\nconst methodology = {\n  forecast_method: om.forecast_method || '',\n  comparison_windows: 'Most recent 7 days vs previous 7 days, anchored on analysis_date.',\n  rule_thresholds: {\n    budget_pacing: 'Overspend >110% of budget; underspend <90%; on track 90–110%.',\n    cpa_deterioration: 'Both windows ≥15 conversions; trigger when recent CPA ≥ previous CPA × 1.20.',\n    creative_deterioration: 'Both windows ≥5,000 impressions and ≥50 clicks; trigger when CTR falls ≥15% and CPC rises ≥20%.',\n    scaling_opportunity: 'Recent conversions ≥15; recent CPA ≥15% below target; WoW CPA deterioration ≤10%; account not clearly over budget.',\n  },\n  limitations: [\n    'All figures are computed deterministically from the supplied CSV; no external data or AI calculation is used.',\n    'The forecast is a linear pacing estimate, not a machine-learning prediction.',\n    'Creative deterioration is a performance signal, not a confirmed cause or proof of creative fatigue.',\n    'ROAS is only shown when a revenue or conversion-value column is present.',\n    'The workflow never modifies campaigns or connects to the live Meta Ads API.',\n  ],\n};\n\nconst triggered = insights.filter(function (i) { return i.status === 'triggered'; });\nconst insuff = insights.filter(function (i) { return i.status === 'insufficient_data'; });\nconst highestRisk = triggered.slice().sort(function (a, b) { return priorityRank(a.priority) - priorityRank(b.priority); })[0];\nconst scaling = triggered.find(function (i) { return i.rule_id === 'rule_4_scaling_opportunity'; });\nconst budget = insights.find(function (i) { return i.rule_id === 'rule_1_budget_pacing'; });\nconst summaryPoints = [];\nif (budget) summaryPoints.push(budget.what_happened);\nif (highestRisk && highestRisk !== budget) summaryPoints.push('Highest-priority issue: ' + highestRisk.what_happened);\nif (scaling) summaryPoints.push('Growth opportunity: ' + scaling.what_happened);\nif (insuff.length) summaryPoints.push(insuff.length + ' rule(s) returned Insufficient Data rather than generating a low-volume alert.');\nif (triggered.length) summaryPoints.push('Immediate focus: review the high-priority findings first, then apply only human-approved, controlled changes.');\nif (!triggered.length) summaryPoints.push('No rule-generated alert was triggered; maintain the current approach and continue monitoring.');\n\nconst report = {\n  report_title: 'AccountPulse Paid Media Growth Review',\n  generated_at: nowIso,\n  input_summary: s.input_summary || {},\n  executive_summary: summaryPoints.join(' '),\n  executive_summary_points: summaryPoints,\n  overall_metrics: om,\n  campaign_metrics: camps,\n  insights: insights,\n  methodology: methodology,\n};\n\nconst h = [];\nh.push('<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>AccountPulse Report</title>');\nh.push('<style>');\nh.push(':root{--ink:#132238;--muted:#627087;--line:#dfe6ef;--panel:#fff;--bg:#f4f7fb;--navy:#0f1b2d;--blue:#1769e0;--red:#c62828;--amber:#d97706;--green:#087f5b;--shadow:0 8px 28px rgba(15,27,45,.07)}*{box-sizing:border-box}body{font-family:Inter,-apple-system,BlinkMacSystemFont,\"Segoe UI\",Arial,sans-serif;background:var(--bg);color:var(--ink);margin:0;font-size:16px;line-height:1.55}.wrap{max-width:1180px;margin:0 auto;padding:42px 28px 56px}h1{font-size:32px;line-height:1.18;letter-spacing:-.02em;margin:0 0 8px}h2{font-size:23px;line-height:1.25;margin:42px 0 16px;padding-bottom:10px;border-bottom:1px solid var(--line)}h3{font-size:19px;line-height:1.35;margin:5px 0 0}h4{font-size:14px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 9px}.sub,.muted{color:var(--muted)}.sub{font-size:14px;margin:0}.coverage{margin-top:24px;background:#eaf2ff;border:1px solid #cfe0ff;border-radius:14px;padding:14px 18px}.coverage strong{display:block;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:#285c9b;margin-bottom:3px}.summary{background:linear-gradient(135deg,#101f35,#173e72);color:#fff;border-radius:18px;padding:24px 28px;box-shadow:var(--shadow)}.summary h2{margin:0 0 12px;padding:0;border:0;color:#fff}.summary ul{margin:0;padding-left:22px}.summary li{margin:8px 0;color:#e8f0fb}.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:18px 0}.kpi{background:var(--panel);border:1px solid #e9eef5;border-radius:14px;padding:18px;box-shadow:var(--shadow)}.kpi .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.055em;min-height:38px}.kpi .v{font-size:23px;font-weight:760;line-height:1.2;margin-top:8px;letter-spacing:-.01em}.table-wrap{overflow-x:auto;background:#fff;border-radius:14px;box-shadow:var(--shadow);border:1px solid #e8edf4}table{width:100%;min-width:850px;border-collapse:collapse}th,td{padding:13px 14px;text-align:right;border-bottom:1px solid #edf1f6;font-size:14px;white-space:nowrap}th:first-child,td:first-child{text-align:left}th{background:var(--navy);color:#fff;font-size:13px;letter-spacing:.02em}tr:last-child td{border-bottom:0}.alert{background:var(--panel);border:1px solid #e5eaf1;border-left:6px solid var(--red);border-radius:14px;padding:22px;margin:16px 0;box-shadow:var(--shadow)}.alert.medium{border-left-color:var(--amber)}.alert.low{border-left-color:var(--blue)}.alert-head,.action-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.pill,.status,.eyebrow{display:inline-block;font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:.055em;border-radius:999px;padding:5px 9px}.pill{background:#eef2ff;color:#3730a3}.status{background:#edf2f7;color:#40516a}.status.triggered{background:#feecec;color:#9f2020}.status.stable,.status.on_track{background:#e7f7f1;color:#07674b}.eyebrow{padding:0;color:var(--muted)}.section-label{font-weight:750;font-size:13px;text-transform:uppercase;letter-spacing:.055em;color:var(--muted);margin:19px 0 7px}.alert p{margin:6px 0 0}.metric-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:10px}.metric-chip{background:#f7f9fc;border:1px solid #e5eaf1;border-radius:11px;padding:12px}.metric-chip span{display:block;color:var(--muted);font-size:12px;line-height:1.35}.metric-chip strong{display:block;font-size:16px;line-height:1.35;margin-top:4px}.action-stack{display:grid;gap:16px}.action-card{background:#fff;border:1px solid #e5eaf1;border-radius:16px;padding:22px;box-shadow:var(--shadow)}.action-meta{font-size:14px;color:var(--muted);margin-top:10px}.action-columns{display:grid;grid-template-columns:1.25fr 1fr;gap:26px;margin-top:20px}.clean-list{margin:0;padding-left:20px}.clean-list li{margin:7px 0}.timing{font-size:14px;margin:13px 0 0}.guardrail{margin-top:18px;padding:13px 15px;background:#fff8e8;border:1px solid #f5d89a;border-radius:11px;font-size:14px}.notice{background:#fff8e8;border:1px solid #f1d69a;border-radius:13px;padding:16px 18px;margin:10px 0}.method{background:#fff;border:1px solid #e6ebf2;border-radius:14px;padding:20px 22px}.method p{margin:5px 0}.method ul{margin:7px 0 0;padding-left:21px}.method li{margin:6px 0}.foot{color:var(--muted);font-size:13px;margin-top:34px;text-align:center}@media(max-width:850px){.wrap{padding:28px 16px 42px}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.action-columns{grid-template-columns:1fr}.alert-head,.action-head{flex-direction:column;gap:8px}}@media(max-width:520px){body{font-size:15px}.wrap{padding:22px 12px 36px}h1{font-size:27px}h2{font-size:21px;margin-top:34px}.cards,.metric-grid{grid-template-columns:1fr}.summary{padding:20px}.alert,.action-card{padding:18px}.kpi .l{min-height:0}}@media print{body{background:#fff}.wrap{max-width:none;padding:12mm}.summary,.kpi,.table-wrap,.alert,.action-card,.method{box-shadow:none;break-inside:avoid}.summary{-webkit-print-color-adjust:exact;print-color-adjust:exact}.action-card{page-break-inside:avoid}h2{break-after:avoid}}');\nh.push('</style></head><body><main class=\"wrap\">');\n\nh.push('<header><h1>' + esc(report.report_title) + '</h1><p class=\"sub\">Generated ' + esc(nowIso) + ' · Explainable deterministic engine · No AI-calculated metrics</p></header>');\nconst isum = report.input_summary;\nh.push('<div class=\"coverage\"><strong>Data coverage</strong>' + esc(isum.row_count) + ' rows · ' + esc(isum.campaign_count) + ' campaigns · ' + esc(isum.date_start) + ' to ' + esc(isum.date_end) + ' · Currency ' + esc(isum.currency || cur) + '</div>');\n\nh.push('<section><h2>Performance Snapshot</h2><div class=\"cards\">');\nh.push('<div class=\"kpi\"><div class=\"l\">Total Spend</div><div class=\"v\">' + money(om.spend) + '</div></div>');\nh.push('<div class=\"kpi\"><div class=\"l\">Month-to-Date</div><div class=\"v\">' + money(om.mtd_spend) + '</div></div>');\nh.push('<div class=\"kpi\"><div class=\"l\">Projected Month-End</div><div class=\"v\">' + (om.projected_month_end_spend == null ? 'Insufficient Data' : money(om.projected_month_end_spend)) + '</div></div>');\nh.push('<div class=\"kpi\"><div class=\"l\">Monthly Budget</div><div class=\"v\">' + money(om.budget) + '</div></div>');\nh.push('<div class=\"kpi\"><div class=\"l\">CTR</div><div class=\"v\">' + pct(om.ctr, 2) + '</div></div>');\nh.push('<div class=\"kpi\"><div class=\"l\">CPC</div><div class=\"v\">' + money(om.cpc) + '</div></div>');\nh.push('<div class=\"kpi\"><div class=\"l\">CPA</div><div class=\"v\">' + money(om.cpa) + '</div></div>');\nh.push('<div class=\"kpi\"><div class=\"l\">ROAS</div><div class=\"v\">' + (om.roas == null ? 'N/A' : num(om.roas) + 'x') + '</div></div>');\nh.push('</div></section>');\n\nh.push('<section class=\"summary\"><h2>Executive Summary</h2>' + listHtml(summaryPoints) + '</section>');\n\nh.push('<section><h2>Campaign Performance</h2><div class=\"table-wrap\"><table><thead><tr><th>Campaign</th><th>Spend</th><th>Impr.</th><th>Clicks</th><th>Conv.</th><th>CTR</th><th>CPC</th><th>CPA</th><th>ROAS</th></tr></thead><tbody>');\ncamps.forEach(function (c) {\n  const t = c.totals || {};\n  h.push('<tr><td>' + esc(c.campaign_name) + '</td><td>' + money(t.spend) + '</td><td>' + num(t.impressions) + '</td><td>' + num(t.clicks) + '</td><td>' + num(t.conversions) + '</td><td>' + pct(t.ctr, 2) + '</td><td>' + money(t.cpc) + '</td><td>' + money(t.cpa) + '</td><td>' + (t.roas == null ? 'N/A' : num(t.roas) + 'x') + '</td></tr>');\n});\nh.push('</tbody></table></div></section>');\n\nh.push('<section><h2>Triggered Alerts &amp; Evidence</h2>');\nif (!triggered.length) h.push('<div class=\"notice\">No rule-generated alert was triggered for the supplied data.</div>');\ntriggered.slice().sort(function (a, b) { return priorityRank(a.priority) - priorityRank(b.priority); }).forEach(function (i) {\n  const cls = i.priority === 'high' ? 'alert' : (i.priority === 'medium' ? 'alert medium' : 'alert low');\n  h.push('<article class=\"' + cls + '\"><div class=\"alert-head\"><div><span class=\"eyebrow\">' + esc(i.rule_id) + '</span><h3>' + esc(i.title) + '</h3></div><span class=\"pill\">' + esc(i.priority) + ' priority</span></div>');\n  h.push('<div class=\"section-label\">What happened</div><p>' + esc(i.what_happened) + '</p>');\n  h.push('<div class=\"section-label\">Key evidence</div>' + evidenceHtml(i));\n  h.push('<div class=\"section-label\">Why it matters</div><p>' + esc(i.why_it_matters) + '</p>');\n  h.push('<div class=\"section-label\">Rule-level recommendation</div><p>' + esc(i.recommended_action) + '</p>');\n  h.push('<p class=\"muted\"><strong>Confidence:</strong> ' + esc(i.confidence || 'not stated') + ' · <strong>Data sufficiency:</strong> ' + esc(i.data_sufficiency || 'not stated') + '</p></article>');\n});\nh.push('</section>');\n\nh.push('<section><h2>Recommended Action Plan</h2><div class=\"action-stack\">');\ninsights.filter(function (i) { return i.status !== 'insufficient_data'; }).sort(function (a, b) { return priorityRank(a.priority) - priorityRank(b.priority); }).forEach(function (i) { h.push(planCard(i)); });\nh.push('</div></section>');\n\nif (insuff.length) {\n  h.push('<section><h2>Insufficient-Data Notices</h2>');\n  insuff.forEach(function (i) {\n    h.push('<div class=\"notice\"><strong>' + esc(i.title) + '</strong><br>' + esc(i.what_happened) + '<br><span class=\"muted\">' + esc(i.data_sufficiency || '') + '</span></div>');\n  });\n  h.push('</section>');\n}\n\nh.push('<section><h2>Methodology &amp; Limitations</h2><div class=\"method\">');\nh.push('<p><strong>Forecast:</strong> ' + esc(methodology.forecast_method) + '</p>');\nh.push('<p><strong>Comparison windows:</strong> ' + esc(methodology.comparison_windows) + '</p><h4>Rule thresholds</h4><ul>');\nObject.keys(methodology.rule_thresholds).forEach(function (k) { h.push('<li><strong>' + esc(k) + ':</strong> ' + esc(methodology.rule_thresholds[k]) + '</li>'); });\nh.push('</ul><h4>Limitations</h4><ul>');\nmethodology.limitations.forEach(function (l) { h.push('<li>' + esc(l) + '</li>'); });\nh.push('</ul></div></section>');\n\nh.push('<p class=\"foot\">AccountPulse MVP — explainable, deterministic paid-media review. No campaigns were modified. Optional AI narrative remains disabled.</p>');\nh.push('</main></body></html>');\n\nreport.html_report = h.join('');\nreturn [{ json: report }];\n"
+      },
+      "id": "c2002101-12c7-42a2-b84d-c0025839b753",
+      "name": "Build AccountPulse Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "3d2e5ff7-95e4-4c20-87c7-abfea22a7778",
+      "name": "Optional AI Narrative – Phase 2",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2464,
+        0
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "showText",
+        "responseText": "={{ $json.html_report }}"
+      },
+      "id": "8054ad0f-bdf1-4099-84b7-6c08c1cc8c61",
+      "name": "Display Analysis Report",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        2688,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $input.first().json || {};\nconst errors = s.errors || [];\nconst warnings = s.warnings || [];\n\nconst lines = [];\nlines.push('<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Validation Error</title>');\nlines.push('<style>body{font-family:Arial,Helvetica,sans-serif;background:#f5f6f8;color:#222;margin:0;padding:24px}.card{max-width:820px;margin:0 auto;background:#fff;border-radius:10px;padding:28px;box-shadow:0 1px 4px rgba(0,0,0,.08)}h1{color:#b91c1c;margin-top:0}li{margin:6px 0}.warn{color:#92600a}code{background:#eef;padding:2px 5px;border-radius:4px}</style></head><body><div class=\"card\">');\nlines.push('<h1>CSV Validation Failed</h1>');\nlines.push('<p>Your file could not be analysed. Please fix the issues below and re-upload.</p>');\nlines.push('<h3>Errors</h3><ul>');\nerrors.forEach(function (e) { lines.push('<li>' + e + '</li>'); });\nlines.push('</ul>');\nif (warnings.length) {\n  lines.push('<h3>Warnings</h3><ul>');\n  warnings.forEach(function (w) { lines.push('<li class=\"warn\">' + w + '</li>'); });\n  lines.push('</ul>');\n}\nlines.push('<h3>How to correct the CSV</h3><ul>');\nlines.push('<li>Ensure required columns exist: <code>date</code>, <code>campaign_name</code>, <code>spend</code>, <code>impressions</code>, <code>clicks</code>, <code>conversions</code> (Meta aliases like <code>Day</code>, <code>Amount Spent (HKD)</code>, <code>Link Clicks</code>, <code>Results</code> are accepted).</li>');\nlines.push('<li>Remove total / summary rows and blank rows.</li>');\nlines.push('<li>Use plain numbers (strip currency symbols, thousands separators and % signs).</li>');\nlines.push('<li>Use a consistent date format such as YYYY-MM-DD.</li>');\nlines.push('</ul></div></body></html>');\n\nconst errorResponse = {\n  status: 'invalid',\n  errors: errors,\n  warnings: warnings,\n  guidance: [\n    'Include all required columns (date, campaign_name, spend, impressions, clicks, conversions).',\n    'Remove summary/total and empty rows.',\n    'Strip currency symbols, commas and percent signs from numeric fields.',\n    'Use a consistent, parseable date format (e.g. YYYY-MM-DD).',\n  ],\n  html_report: lines.join(''),\n};\nreturn [{ json: errorResponse }];"
+      },
+      "id": "9e4a1cdc-5936-4ab2-a1b9-d6732a043cc9",
+      "name": "Return Validation Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "showText",
+        "responseText": "={{ $json.html_report }}"
+      },
+      "id": "6b50e6b2-48c6-40de-ba98-b8c8b8cd94be",
+      "name": "Display Validation Error",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        1344,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 1. Input\nTwo paths feed the same pipeline:\n- **Path A** Form Trigger → Extract CSV → Prepare\n- **Path B** Manual Trigger → deterministic demo data\nBoth output the same {config, raw_rows} shape.",
+        "height": 232,
+        "width": 332
+      },
+      "id": "cc608b44-a80f-4efa-abaa-86f05faef306",
+      "name": "Sticky Note cc608b44",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        -464
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 2. Validation\nNormalize headers (Meta aliases), clean numbers/dates, drop empty & total rows, check required columns. Invalid input is routed to a clear error page.",
+        "height": 200,
+        "width": 300
+      },
+      "id": "94d86b90-ef85-4ef4-9149-6d212f8c98df",
+      "name": "Sticky Note 94d86b90",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        384,
+        -464
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 3. Analytics\nAll metrics computed deterministically with zero-safe division: CTR, CPC, CVR, CPA, ROAS, account/campaign/7-day windows, and a transparent linear pacing forecast.",
+        "height": 200,
+        "width": 300
+      },
+      "id": "07bbf54c-d23c-42f9-9c15-ac461e77e186",
+      "name": "Sticky Note 07bbf54c",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        768,
+        -432
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 4. Explainable Rule Engine\nFour sequential Code nodes, each appends one structured insight with exact evidence numbers: Budget Pacing, CPA Deterioration, Creative Deterioration, Scaling Opportunity.",
+        "height": 200,
+        "width": 300
+      },
+      "id": "d40527ae-8a38-4ed1-adb1-e447a67f6669",
+      "name": "Sticky Note d40527ae",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1168,
+        -448
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 5. Report Output\nStructured JSON report + printable HTML (KPIs, campaign table, alerts, evidence, insufficient-data notices, methodology). Executive summary is built only from verified rule outputs.",
+        "height": 200,
+        "width": 300
+      },
+      "id": "ef2df6e3-74e8-40c6-a571-eaff7b852f28",
+      "name": "Sticky Note ef2df6e3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1616,
+        -416
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 6. Optional AI Narrative (Phase 2)\nDISABLED placeholder. A future AI layer may only rewrite verified findings into client-friendly language. It must NEVER calculate metrics, decide rules, invent causes, or change campaigns.",
+        "height": 200,
+        "width": 300
+      },
+      "id": "f188cabe-a626-43df-bb78-fb83441fc217",
+      "name": "Sticky Note f188cabe",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2064,
+        -416
+      ]
+    }
+  ],
+  "connections": {
+    "Upload Meta Ads CSV": {
+      "main": [
+        [
+          {
+            "node": "Extract CSV to JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract CSV to JSON": {
+      "main": [
+        [
+          {
+            "node": "Prepare Upload Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Upload Input": {
+      "main": [
+        [
+          {
+            "node": "Normalize and Validate CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize and Validate CSV": {
+      "main": [
+        [
+          {
+            "node": "Is Input Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run AccountPulse Demo": {
+      "main": [
+        [
+          {
+            "node": "Generate Purpose-Built Demo Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Purpose-Built Demo Data": {
+      "main": [
+        [
+          {
+            "node": "Normalize and Validate CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Input Valid?": {
+      "main": [
+        [
+          {
+            "node": "Calculate Campaign Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Validation Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Campaign Metrics": {
+      "main": [
+        [
+          {
+            "node": "Rule 1 – Budget Pacing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rule 1 – Budget Pacing": {
+      "main": [
+        [
+          {
+            "node": "Rule 2 – CPA Deterioration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rule 2 – CPA Deterioration": {
+      "main": [
+        [
+          {
+            "node": "Rule 3 – Creative Deterioration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rule 3 – Creative Deterioration": {
+      "main": [
+        [
+          {
+            "node": "Rule 4 – Scaling Opportunity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rule 4 – Scaling Opportunity": {
+      "main": [
+        [
+          {
+            "node": "Build AccountPulse Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build AccountPulse Report": {
+      "main": [
+        [
+          {
+            "node": "Optional AI Narrative – Phase 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Optional AI Narrative – Phase 2": {
+      "main": [
+        [
+          {
+            "node": "Display Analysis Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Return Validation Error": {
+      "main": [
+        [
+          {
+            "node": "Display Validation Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "nodeGroups": [],
+  "tags": []
+}
