@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AccountPulse — Demo Paid Media Growth Review</title>
+  <style>
+    :root{--ink:#132238;--muted:#627087;--line:#dfe6ef;--panel:#fff;--bg:#f4f7fb;--navy:#0f1b2d;--blue:#1769e0;--red:#c62828;--amber:#d97706;--green:#087f5b;--shadow:0 8px 28px rgba(15,27,45,.07)}
+    *{box-sizing:border-box}body{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:var(--bg);color:var(--ink);margin:0;font-size:16px;line-height:1.55}.wrap{max-width:1180px;margin:0 auto;padding:42px 28px 56px}h1{font-size:34px;line-height:1.16;letter-spacing:-.025em;margin:0 0 8px}h2{font-size:23px;line-height:1.25;margin:42px 0 16px;padding-bottom:10px;border-bottom:1px solid var(--line)}h3{font-size:19px;line-height:1.35;margin:5px 0 0}h4{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 8px}.sub,.muted{color:var(--muted)}.sub{font-size:14px;margin:0}.demo{display:inline-flex;align-items:center;gap:8px;background:#eaf2ff;border:1px solid #cfe0ff;color:#285c9b;border-radius:999px;padding:6px 11px;font-size:12px;font-weight:750;letter-spacing:.04em;text-transform:uppercase;margin-bottom:14px}.coverage{margin-top:24px;background:#eaf2ff;border:1px solid #cfe0ff;border-radius:14px;padding:14px 18px}.coverage strong{display:block;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:#285c9b;margin-bottom:3px}.summary{background:linear-gradient(135deg,#101f35,#173e72);color:#fff;border-radius:18px;padding:24px 28px;box-shadow:var(--shadow);margin-top:34px}.summary h2{margin:0 0 12px;padding:0;border:0;color:#fff}.summary ul{margin:0;padding-left:22px}.summary li{margin:8px 0;color:#e8f0fb}.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:18px 0}.kpi{background:var(--panel);border:1px solid #e9eef5;border-radius:14px;padding:18px;box-shadow:var(--shadow)}.kpi .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.055em;min-height:38px}.kpi .v{font-size:23px;font-weight:760;line-height:1.2;margin-top:8px;letter-spacing:-.01em}.table-wrap{overflow-x:auto;background:#fff;border-radius:14px;box-shadow:var(--shadow);border:1px solid #e8edf4}table{width:100%;min-width:850px;border-collapse:collapse}th,td{padding:13px 14px;text-align:right;border-bottom:1px solid #edf1f6;font-size:14px;white-space:nowrap}th:first-child,td:first-child{text-align:left}th{background:var(--navy);color:#fff;font-size:13px;letter-spacing:.02em}tr:last-child td{border-bottom:0}.alert{background:var(--panel);border:1px solid #e5eaf1;border-left:6px solid var(--red);border-radius:14px;padding:22px;margin:16px 0;box-shadow:var(--shadow)}.alert.medium{border-left-color:var(--amber)}.alert-head,.action-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.pill,.status,.eyebrow{display:inline-block;font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:.055em;border-radius:999px;padding:5px 9px}.pill{background:#eef2ff;color:#3730a3}.status{background:#feecec;color:#9f2020}.eyebrow{padding:0;color:var(--muted)}.section-label{font-weight:750;font-size:13px;text-transform:uppercase;letter-spacing:.055em;color:var(--muted);margin:19px 0 7px}.alert p{margin:6px 0 0}.metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:10px}.metric-chip{background:#f7f9fc;border:1px solid #e5eaf1;border-radius:11px;padding:12px}.metric-chip span{display:block;color:var(--muted);font-size:12px;line-height:1.35}.metric-chip strong{display:block;font-size:16px;line-height:1.35;margin-top:4px}.action-stack{display:grid;gap:16px}.action-card{background:#fff;border:1px solid #e5eaf1;border-radius:16px;padding:22px;box-shadow:var(--shadow)}.action-meta{font-size:14px;color:var(--muted);margin-top:10px}.action-columns{display:grid;grid-template-columns:1.25fr 1fr;gap:26px;margin-top:20px}.clean-list{margin:0;padding-left:20px}.clean-list li{margin:7px 0}.timing{font-size:14px;margin:13px 0 0}.guardrail{margin-top:18px;padding:13px 15px;background:#fff8e8;border:1px solid #f5d89a;border-radius:11px;font-size:14px}.notice{background:#fff8e8;border:1px solid #f1d69a;border-radius:13px;padding:16px 18px;margin:10px 0}.method{background:#fff;border:1px solid #e6ebf2;border-radius:14px;padding:20px 22px}.method p{margin:5px 0}.method ul{margin:7px 0 0;padding-left:21px}.method li{margin:6px 0}.foot{color:var(--muted);font-size:13px;margin-top:34px;text-align:center}
+    @media(max-width:850px){.wrap{padding:28px 16px 42px}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.action-columns{grid-template-columns:1fr}.alert-head,.action-head{flex-direction:column;gap:8px}}
+    @media(max-width:520px){body{font-size:15px}.wrap{padding:22px 12px 36px}h1{font-size:27px}h2{font-size:21px;margin-top:34px}.cards,.metric-grid{grid-template-columns:1fr}.summary{padding:20px}.alert,.action-card{padding:18px}.kpi .l{min-height:0}}
+    @media print{body{background:#fff}.wrap{max-width:none;padding:10mm}.summary,.kpi,.table-wrap,.alert,.action-card,.method{box-shadow:none;break-inside:avoid}.summary{-webkit-print-color-adjust:exact;print-color-adjust:exact}.action-card{page-break-inside:avoid}h2{break-after:avoid}.demo{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+  </style>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <div class="demo">Portfolio demonstration · Synthetic data</div>
+    <h1>AccountPulse Paid Media Growth Review</h1>
+    <p class="sub">Analysis date 18 Aug 2026 · Explainable deterministic engine · No AI-calculated metrics</p>
+  </header>
+
+  <div class="coverage"><strong>Data coverage</strong>72 rows · 4 campaigns · 1–18 Aug 2026 · Currency HKD</div>
+
+  <section>
+    <h2>Performance Snapshot</h2>
+    <div class="cards">
+      <div class="kpi"><div class="l">Total Spend</div><div class="v">HKD 23,760</div></div>
+      <div class="kpi"><div class="l">Projected Month-End</div><div class="v">HKD 40,920</div></div>
+      <div class="kpi"><div class="l">Monthly Budget</div><div class="v">HKD 50,000</div></div>
+      <div class="kpi"><div class="l">Budget Utilisation</div><div class="v">81.8%</div></div>
+      <div class="kpi"><div class="l">CTR</div><div class="v">4.16%</div></div>
+      <div class="kpi"><div class="l">CPC</div><div class="v">HKD 1.43</div></div>
+      <div class="kpi"><div class="l">CPA</div><div class="v">HKD 146.67</div></div>
+      <div class="kpi"><div class="l">ROAS</div><div class="v">2.41x</div></div>
+    </div>
+  </section>
+
+  <section class="summary">
+    <h2>Executive Summary</h2>
+    <ul>
+      <li>Projected month-end spend is 81.8% of budget, indicating an underspending risk if the current daily pace continues.</li>
+      <li>The highest-priority issue is a verified CPA deterioration in the CPA Decline Campaign: HKD 100.00 to HKD 180.00, with both windows above the minimum conversion requirement.</li>
+      <li>Video Test A shows simultaneous CTR decline and CPC increase, supporting a creative-performance review without claiming a confirmed cause.</li>
+      <li>Growth Prospecting qualifies for a controlled scaling test, while Low Volume Test is explicitly withheld from conclusions due to insufficient data.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Campaign Performance</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Campaign</th><th>Spend</th><th>Impr.</th><th>Clicks</th><th>Conv.</th><th>CTR</th><th>CPC</th><th>CPA</th><th>ROAS</th></tr></thead>
+      <tbody>
+        <tr><td>Growth Prospecting</td><td>HKD 10,800</td><td>216,000</td><td>8,640</td><td>61</td><td>4.00%</td><td>HKD 1.25</td><td>HKD 177.05</td><td>2.82x</td></tr>
+        <tr><td>CPA Decline Campaign</td><td>HKD 8,180</td><td>147,500</td><td>5,620</td><td>65</td><td>3.81%</td><td>HKD 1.46</td><td>HKD 125.85</td><td>2.38x</td></tr>
+        <tr><td>Creative Deterioration Campaign</td><td>HKD 3,880</td><td>18,000</td><td>1,660</td><td>36</td><td>9.22%</td><td>HKD 2.34</td><td>HKD 107.78</td><td>1.86x</td></tr>
+        <tr><td>Low Volume Test</td><td>HKD 900</td><td>3,600</td><td>90</td><td>0</td><td>2.50%</td><td>HKD 10.00</td><td>N/A</td><td>0.00x</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Triggered Alerts &amp; Evidence</h2>
+    <article class="alert medium">
+      <div class="alert-head"><div><span class="eyebrow">Budget pacing</span><h3>Underspending Risk</h3></div><span class="pill">Medium priority</span></div>
+      <div class="section-label">What happened</div><p>Linear pacing projects HKD 40,920 in month-end spend, equal to 81.8% of the HKD 50,000 monthly budget and below the 90% threshold.</p>
+      <div class="metric-grid"><div class="metric-chip"><span>Month-to-date spend</span><strong>HKD 23,760</strong></div><div class="metric-chip"><span>Projected month-end</span><strong>HKD 40,920</strong></div><div class="metric-chip"><span>Monthly budget</span><strong>HKD 50,000</strong></div><div class="metric-chip"><span>Projected use</span><strong>81.8%</strong></div></div>
+      <div class="section-label">Why it matters</div><p>Persistent under-pacing can leave planned growth capacity unused, but it does not justify indiscriminate spending.</p>
+    </article>
+
+    <article class="alert">
+      <div class="alert-head"><div><span class="eyebrow">CPA deterioration</span><h3>CPA Deterioration Detected</h3></div><span class="pill">High priority</span></div>
+      <div class="section-label">What happened</div><p>CPA increased 80.0% in the CPA Decline Campaign when comparing the most recent seven days with the previous seven days.</p>
+      <div class="metric-grid"><div class="metric-chip"><span>Previous CPA</span><strong>HKD 100.00</strong></div><div class="metric-chip"><span>Recent CPA</span><strong>HKD 180.00</strong></div><div class="metric-chip"><span>CPA change</span><strong>+80.0%</strong></div><div class="metric-chip"><span>Conversions</span><strong>28 → 21</strong></div></div>
+      <div class="section-label">Why it matters</div><p>The change is material and passes the minimum-volume guardrail, indicating a genuine efficiency risk that deserves diagnosis.</p>
+    </article>
+
+    <article class="alert">
+      <div class="alert-head"><div><span class="eyebrow">Creative performance</span><h3>Creative Performance Deterioration</h3></div><span class="pill">High priority</span></div>
+      <div class="section-label">What happened</div><p>Video Test A recorded a 20.0% CTR decline while CPC increased 50.0% across the two seven-day windows.</p>
+      <div class="metric-grid"><div class="metric-chip"><span>CTR</span><strong>10.0% → 8.0%</strong></div><div class="metric-chip"><span>CPC</span><strong>HKD 2.00 → 3.00</strong></div><div class="metric-chip"><span>Recent impressions</span><strong>7,000</strong></div><div class="metric-chip"><span>Recent clicks</span><strong>560</strong></div></div>
+      <div class="section-label">Why it matters</div><p>Simultaneous CTR decline and CPC increase signals weakening delivery efficiency. It is a performance signal—not proof of creative fatigue.</p>
+    </article>
+
+    <article class="alert medium">
+      <div class="alert-head"><div><span class="eyebrow">Controlled scaling</span><h3>Controlled Scaling Opportunity</h3></div><span class="pill">Medium priority</span></div>
+      <div class="section-label">What happened</div><p>Growth Prospecting delivered a recent CPA 40.0% below the HKD 250 target with 28 recent conversions and improving week-over-week efficiency.</p>
+      <div class="metric-grid"><div class="metric-chip"><span>Recent CPA</span><strong>HKD 150.00</strong></div><div class="metric-chip"><span>Target CPA</span><strong>HKD 250.00</strong></div><div class="metric-chip"><span>Below target</span><strong>40.0%</strong></div><div class="metric-chip"><span>WoW CPA change</span><strong>−25.0%</strong></div></div>
+      <div class="section-label">Why it matters</div><p>The campaign has evidence-supported headroom to test additional spend without automatically changing any live budget.</p>
+    </article>
+  </section>
+
+  <section>
+    <h2>Recommended Action Plan</h2>
+    <div class="action-stack">
+      <article class="action-card">
+        <div class="action-head"><div><span class="eyebrow">High priority</span><h3>Diagnose CPA deterioration</h3></div><span class="status">Human approval</span></div>
+        <div class="action-meta"><strong>Scope:</strong> CPA Decline Campaign</div>
+        <div class="action-columns"><div><h4>Recommended actions</h4><ul class="clean-list"><li>Review audience, placement, bid, landing-page and offer changes made between the two windows.</li><li>Treat each factor as a diagnostic hypothesis rather than a confirmed cause.</li><li>Isolate one material variable at a time before applying a corrective change.</li></ul></div><div><h4>Monitor</h4><ul class="clean-list"><li>CPA and conversion volume</li><li>Spend, CTR and CPC</li><li>Any recent campaign-setting changes</li></ul><p class="timing"><strong>Review timing:</strong> 48–72 hours after the approved change, or after a meaningful new conversion sample.</p></div></div>
+        <div class="guardrail"><strong>Decision guardrail:</strong> The alert passes the 15-conversion minimum in both windows, but the data still does not prove causality.</div>
+      </article>
+
+      <article class="action-card">
+        <div class="action-head"><div><span class="eyebrow">High priority</span><h3>Test a controlled creative refresh</h3></div><span class="status">Human approval</span></div>
+        <div class="action-meta"><strong>Scope:</strong> Video Test A</div>
+        <div class="action-columns"><div><h4>Recommended actions</h4><ul class="clean-list"><li>Prepare one alternative creative with a controlled change to the hook, visual or format.</li><li>Keep audience, placement and optimisation settings stable during the test.</li><li>Review frequency and audience overlap inside Ads Manager if those fields are available.</li></ul></div><div><h4>Monitor</h4><ul class="clean-list"><li>CTR and CPC</li><li>Impressions and clicks</li><li>CPA after sufficient conversions accrue</li></ul><p class="timing"><strong>Review timing:</strong> After 48–72 hours or once the replacement reaches the same volume guardrail.</p></div></div>
+        <div class="guardrail"><strong>Decision guardrail:</strong> Do not label the result “creative fatigue” without supporting frequency, audience or placement evidence.</div>
+      </article>
+
+      <article class="action-card">
+        <div class="action-head"><div><span class="eyebrow">Medium priority</span><h3>Reallocate budget with efficiency controls</h3></div><span class="status">Human approval</span></div>
+        <div class="action-meta"><strong>Scope:</strong> Account level and Growth Prospecting</div>
+        <div class="action-columns"><div><h4>Recommended actions</h4><ul class="clean-list"><li>Prioritise campaigns that already meet efficiency targets before using additional budget.</li><li>Test a measured 10–20% budget increase for Growth Prospecting.</li><li>Avoid changing budget, audience and creative simultaneously so impact remains measurable.</li></ul></div><div><h4>Monitor</h4><ul class="clean-list"><li>Projected month-end spend</li><li>CPA versus target</li><li>Conversion volume and stability</li></ul><p class="timing"><strong>Review timing:</strong> 48–72 hours after any approved allocation change.</p></div></div>
+        <div class="guardrail"><strong>Decision guardrail:</strong> Underspending is a pacing signal—not evidence that every remaining dollar should be spent.</div>
+      </article>
+    </div>
+  </section>
+
+  <section>
+    <h2>Insufficient-Data Notice</h2>
+    <div class="notice"><strong>Low Volume Test</strong><br>No CPA or scaling conclusion was generated because both comparison windows recorded zero conversions. The workflow returns “Insufficient Data” instead of creating a misleading alert.</div>
+  </section>
+
+  <section>
+    <h2>Methodology &amp; Limitations</h2>
+    <div class="method">
+      <p><strong>Forecast:</strong> Month-to-date spend ÷ 18 elapsed calendar days × 31 days. This is a linear pacing estimate, not a machine-learning prediction.</p>
+      <p><strong>Comparison windows:</strong> 12–18 Aug 2026 versus 5–11 Aug 2026, anchored on the analysis date.</p>
+      <h4>Key limitations</h4>
+      <ul><li>All figures are computed deterministically from the supplied CSV; no external data or AI calculation is used.</li><li>Creative deterioration is a performance signal, not a confirmed cause.</li><li>ROAS is shown only when conversion value is present.</li><li>The workflow never modifies campaigns or connects to the live Meta Ads API.</li></ul>
+    </div>
+  </section>
+
+  <p class="foot">AccountPulse MVP · Synthetic portfolio demonstration · No campaigns were modified · Optional AI narrative remains disabled</p>
+</main>
+</body>
+</html>
