@@ -6,8 +6,8 @@ This guide takes you from a fresh n8n workspace to a verified AccountPulse repor
 
 Download these files from the repository:
 
-- [`AccountPulse_MVP_GitHub_Public.json`](../AccountPulse_MVP_GitHub_Public.json) — n8n workflow
-- [`AccountPulse_Meta_Ads_Test.csv`](../AccountPulse_Meta_Ads_Test.csv) — purpose-built test data
+- [`AccountPulse_MVP_GitHub_Public.json`](./AccountPulse_MVP_GitHub_Public.json) — n8n workflow
+- [`AccountPulse_Meta_Ads_Test.csv`](./AccountPulse_Meta_Ads_Test.csv) — purpose-built test data
 
 ## 2. Import the workflow into n8n
 
